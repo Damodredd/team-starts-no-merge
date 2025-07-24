@@ -6,6 +6,7 @@ local Functions = require 'scripts.functions'
 Event.on_init(function()
   local map_force_to_planet = {}
   local assigned_planets = {}
+  local all_team_forces = {}
 
   -- Create all new forces
   for index, name in pairs(Planets.nauvis) do
@@ -15,6 +16,20 @@ Event.on_init(function()
     storage.map_force_to_planet[force.name] = name
     storage.map_planet_to_force[name] = force.name
     storage.team_names[force.name] = string.format('Team %02d', index)
+    all_team_forces[#all_team_forces + 1] = force
+  end
+
+  -- Make all team forces friendly to each other
+  for i, force1 in pairs(all_team_forces) do
+    for j, force2 in pairs(all_team_forces) do
+      if i ~= j then
+        force1.set_friend(force2, true)
+        force2.set_friend(force1, true)
+      end
+    end
+    -- Also make them friendly with the global player force
+    force1.set_friend(game.forces.player, true)
+    game.forces.player.set_friend(force1, true)
   end
 
   -- Create surface-force links
@@ -121,7 +136,28 @@ end
 Event.add(defines.events.on_force_reset, reset_space_locations)
 Event.add(defines.events.on_technology_effects_reset, reset_space_locations)
 Event.on_configuration_changed(function()
+  -- Ensure all forces are friendly to each other after configuration changes
   for _, f in pairs(game.forces) do
     reset_space_locations({ force = f })
+  end
+  
+  -- Make all team forces friendly to each other
+  local team_forces = {}
+  for _, force in pairs(game.forces) do
+    if Functions.starts_with(force.name, 'player_') then
+      team_forces[#team_forces + 1] = force
+    end
+  end
+  
+  for i, force1 in pairs(team_forces) do
+    for j, force2 in pairs(team_forces) do
+      if i ~= j then
+        force1.set_friend(force2, true)
+        force2.set_friend(force1, true)
+      end
+    end
+    -- Also make them friendly with the global player force
+    force1.set_friend(game.forces.player, true)
+    game.forces.player.set_friend(force1, true)
   end
 end)
