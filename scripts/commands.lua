@@ -201,3 +201,98 @@ commands.add_command(
     Functions.teleport(target.character, nil, surface, true)
   end
 )
+
+-- /reinstate-team 17 player_name
+commands.add_command(
+  'reinstate-team',
+  '/reinstate-team <team_id> <player_name>, moves a player back to their original team while preserving research [ADMIN only]',
+  function(event)
+    local player = game.get_player(event.player_index)
+    if not (player and player.valid) or not player.admin then
+      return
+    end
+    if not event.parameter then
+      player.print('/reinstate-team <team_id> <player_name>, wrong arguments <team_id> :: number | <player_name> :: string')
+      return
+    end
+    local text = event.parameter
+    local id = string.match(text, '^%d+') -- first number
+    local name = string.match(text, ' (.*)') -- everything after space
+    if not id or not name then
+      player.print('/reinstate-team <team_id> <player_name>, wrong arguments <team_id> :: number | <player_name> :: string')
+      return
+    end
+    id, name = tonumber(id), tostring(name)
+    if not id or not type(id) == 'number' or not name or not type(name) == 'string' or name == '' then
+      player.print('/reinstate-team <team_id> <player_name>, wrong arguments <team_id> :: number | <player_name> :: string')
+      return
+    end
+    local force = game.forces['player_'..id]
+    if not force or not force.valid then
+      player.print('Team '..id..' does not exist')
+      return
+    end
+    local target = game.get_player(name)
+    if not target or not target.valid then
+      player.print('Player "'..name..'" not found')
+      return
+    end
+    
+    -- Additional safety check
+    if not target.force or not target.force.valid then
+      player.print('Player '..name..' has invalid force')
+      return
+    end
+    
+    -- Preserve research by merging current force's tech into destination force
+    local source_force = target.force
+    if source_force ~= force and source_force.valid and force.valid then
+      -- Only merge if forces are different and both valid
+      pcall(function()
+        Functions.merge_technologies(source_force, force)
+        Functions.merge_locations(source_force, force)
+        game.print({'info.info_chain', player_with_color(player), string.format('Merged research from %s into %s', Functions.get_team_name(source_force), Functions.get_team_name(force))})
+      end)
+    end
+    
+    Functions.switch_force(target, force)
+    game.print({'info.info_switch_team', player_with_color(player), player_with_color(target), Functions.get_team_name(force)})
+  end
+)
+
+-- /make-teams-friendly
+commands.add_command(
+  'make-teams-friendly',
+  '/make-teams-friendly, makes all team forces friendly to each other [ADMIN only]',
+  function(event)
+    local player = game.get_player(event.player_index)
+    if not (player and player.valid) or not player.admin then
+      return
+    end
+    
+    -- Get all team forces
+    local team_forces = {}
+    for _, force in pairs(game.forces) do
+      if Functions.starts_with(force.name, 'player_') then
+        team_forces[#team_forces + 1] = force
+      end
+    end
+    
+    -- Make all team forces friendly to each other
+    local count = 0
+    for i, force1 in pairs(team_forces) do
+      for j, force2 in pairs(team_forces) do
+        if i ~= j then
+          force1.set_friend(force2, true)
+          force2.set_friend(force1, true)
+          count = count + 1
+        end
+      end
+      -- Also make them friendly with the global player force
+      force1.set_friend(game.forces.player, true)
+      game.forces.player.set_friend(force1, true)
+    end
+    
+    game.print({'info.info_chain', player_with_color(player), string.format('Made %d team forces friendly to each other', #team_forces)})
+  end
+)
